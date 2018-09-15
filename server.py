@@ -13,13 +13,14 @@ def release_client(client, address):
 def shutdown_server():
     while CLIENTS:
         address, client = CLIENTS.popitem()
-        client.sendall('Server shut down.'.encode('ascii'))
+        client.sendall('\nServer shut down.'.encode('ascii'))
         client.shutdown(socket.SHUT_RDWR)
 
 
 def message_clients():
     while 1:
         msg = yield
+        msg = '\n' + msg
         for client in CLIENTS.values():
             client.sendall(msg.encode('ascii'))
 
