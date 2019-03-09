@@ -21,7 +21,7 @@ class Server:
             sock, address = self.sock.accept()
             msg = f'{address[0]}:{address[1]} connected.'
             print(msg)
-            self.send(msg)
+            TASKS.append(self.send(msg))
             TASKS.append(self.bind_client(sock, address))
 
     def bind_client(self, sock, address):
@@ -33,21 +33,22 @@ class Server:
             if not data:
                 self.unbind_client(sock)
                 break
-            msg = f"{address[0]}:{address[1]} : " + data.decode('ascii')
-            self.send(msg)
+            msg = f'{address[0]}:{address[1]}: ' + data.decode('ascii')
+            TASKS.append(self.send(msg))
+
+    def send(self, msg):
+        """Send message to all clients."""
+        for sock in self.clients.copy():
+            yield 'send', sock
+            sock.sendall(f'\n{msg}'.encode('ascii'))
 
     def unbind_client(self, sock):
-        """Disconnect client."""
+        """Disconnect socket."""
         address = self.clients.pop(sock)
         msg = f'{address[0]}:{address[1]} disconnected.'
         print(msg)
-        self.send(msg)
+        TASKS.append(self.send(msg))
         sock.shutdown(socket.SHUT_RDWR)
-
-    def send(self, msg):
-        """Send message to all connected clients."""
-        for sock in self.clients:
-            sock.sendall(f'\n{msg}'.encode('ascii'))
 
     def shutdown(self):
         """Shutdown server."""
@@ -76,8 +77,6 @@ def main():
             recv_wait[what] = task
         elif why == 'send':
             send_wait[what] = task
-        elif why == 'msg':
-            pass
         else:
             raise RuntimeError('ARG!')
 
