@@ -7,22 +7,15 @@ class Server:
 
     clients = {}
 
-    def __init__(self, host, port):
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        # avoid 'address already in use' problems
-        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.sock.bind((host, port))
-        self.sock.listen(5)
-
-    def listen(self):
+    def listen_on(self, sock):
         """Listen for new client connections."""
         while 1:
-            yield 'recv', self.sock
-            sock, address = self.sock.accept()
+            yield 'recv', sock
+            client, address = sock.accept()
             msg = f'{address[0]}:{address[1]} connected.'
             print(msg)
             TASKS.append(self.send(msg))
-            TASKS.append(self.bind_client(sock, address))
+            TASKS.append(self.bind_client(client, address))
 
     def bind_client(self, sock, address):
         """Bind client and broadcast its messages."""
@@ -84,10 +77,15 @@ def main():
 if __name__ == '__main__':
     TASKS = deque()
     HOST, PORT = '127.0.0.1', 4444
-    server = Server(HOST, PORT)
-    print(f"Listening on {HOST}:{PORT}")
-    TASKS.append(server.listen())
-    try:
-        main()
-    except KeyboardInterrupt:
-        server.shutdown()
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        # avoid 'address already in use' problems
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind((HOST, PORT))
+        sock.listen(5)
+        print(f"Listening on {HOST}:{PORT}")
+        server = Server()
+        TASKS.append(server.listen_on(sock))
+        try:
+            main()
+        except KeyboardInterrupt:
+            server.shutdown()
