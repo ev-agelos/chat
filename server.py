@@ -3,61 +3,70 @@ from select import select
 from collections import deque
 
 
-def release_client(client, address):
-    chat_msg = f'{address[0]}:{address[1]} disconnected.'
-    print(chat_msg)
-    CHAT.send(chat_msg)
-    client.shutdown(socket.SHUT_RDWR)
+class Server:
 
+    clients = {}
 
-def shutdown_server():
-    while CLIENTS:
-        address, client = CLIENTS.popitem()
-        client.sendall('\nServer shut down.'.encode('ascii'))
-        client.shutdown(socket.SHUT_RDWR)
+    def __init__(self, host, port):
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        # avoid 'address already in use' problems
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.sock.bind((host, port))
+        self.sock.listen(5)
 
+    def listen(self):
+        """Listen for new client connections."""
+        while 1:
+            yield 'recv', self.sock
+            sock, address = self.sock.accept()
+            msg = f'{address[0]}:{address[1]} connected.'
+            print(msg)
+            self.send(msg)
+            TASKS.append(self.bind_client(sock, address))
 
-def message_clients():
-    while 1:
-        msg = yield
-        msg = '\n' + msg
-        for client in CLIENTS.values():
-            client.sendall(msg.encode('ascii'))
+    def bind_client(self, sock, address):
+        """Bind client and broadcast its messages."""
+        self.clients[sock] = address
+        while 1:
+            yield 'recv', sock
+            data = sock.recv(1024)
+            if not data:
+                self.unbind_client(sock)
+                break
+            msg = f"{address[0]}:{address[1]} : " + data.decode('ascii')
+            self.send(msg)
 
+    def unbind_client(self, sock):
+        """Disconnect client."""
+        address = self.clients.pop(sock)
+        msg = f'{address[0]}:{address[1]} disconnected.'
+        print(msg)
+        self.send(msg)
+        sock.shutdown(socket.SHUT_RDWR)
 
-def client_handler(client, address):
-    msg = f'{address[0]}:{address[1]} connected.'
-    CHAT.send(msg)
-    CLIENTS[address] = client
-    while 1:
-        yield 'recv', client
-        data = client.recv(1024)
-        if not data:
-            CLIENTS.pop(address)
-            release_client(client, address)
-            break
-        msg = f"{address[0]}:{address[1]} : " + data.decode('ascii')
-        CHAT.send(msg)
+    def send(self, msg):
+        """Send message to all connected clients."""
+        for sock in self.clients:
+            sock.sendall(f'\n{msg}'.encode('ascii'))
 
-
-def server():
-    while 1:
-        yield 'recv', sock
-        client, address = sock.accept()
-        print(f'{address[0]}:{address[1]} connected.')
-        tasks.append(client_handler(client, address))
+    def shutdown(self):
+        """Shutdown server."""
+        self.send('Server shut down.')
+        for sock in self.clients:
+            sock.shutdown(socket.SHUT_RDWR)
 
 
 def main():
-    while any([tasks, recv_wait, send_wait]):
-        while not tasks:
+    recv_wait, send_wait = {}, {}
+    while any([TASKS, recv_wait, send_wait]):
+        while not TASKS:
             can_recv, can_send, _ = select(recv_wait, send_wait, [])
             for s in can_recv:
-                tasks.append(recv_wait.pop(s))
+                TASKS.append(recv_wait.pop(s))
             for s in can_send:
-                tasks.append(send_wait.pop(s))
+                TASKS.append(send_wait.pop(s))
 
-        task = tasks.popleft()
+        task = TASKS.popleft()
         try:
             why, what = next(task)
         except StopIteration:
@@ -74,23 +83,12 @@ def main():
 
 
 if __name__ == '__main__':
+    TASKS = deque()
     HOST, PORT = '127.0.0.1', 4444
-    CLIENTS = {}
-    tasks = deque()
-
-    recv_wait = {}
-    send_wait = {}
-
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    # avoid 'address already in use' problems
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    sock.bind((HOST, PORT))
-    sock.listen(5)
-    print("Listening on {}:{}".format(HOST, PORT))
-    CHAT = message_clients()
-    CHAT.send(None)
-    tasks.append(server())
+    server = Server(HOST, PORT)
+    print(f"Listening on {HOST}:{PORT}")
+    TASKS.append(server.listen())
     try:
         main()
     except KeyboardInterrupt:
-        shutdown_server()
+        server.shutdown()
