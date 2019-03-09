@@ -26,14 +26,14 @@ class Server:
             if not data:
                 self.unbind_client(sock)
                 break
-            msg = f'{address[0]}:{address[1]}: ' + data.decode('ascii')
+            msg = f"{address[0]}:{address[1]}: {data.decode('ascii')}"
             TASKS.append(self.send(msg))
 
     def send(self, msg):
         """Send message to all clients."""
         for sock in self.clients.copy():
             yield 'send', sock
-            sock.sendall(f'\n{msg}'.encode('ascii'))
+            sock.sendall(f'{msg.rstrip()}\n'.encode('ascii'))
 
     def unbind_client(self, sock):
         """Disconnect socket."""

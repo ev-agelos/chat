@@ -11,7 +11,7 @@ def receive_messages(sock):
         server_msg = sock.recv(1024)
         if not server_msg:
             break
-        print(server_msg.decode('ascii'))
+        print(server_msg.decode('ascii'), end='')
 
 
 def send_input(sock):
